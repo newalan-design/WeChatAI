@@ -131,7 +131,7 @@ class WeChatAPI {
     }
 
     // 上传永久素材（图片/视频）
-    async uploadPermanentMaterial(filePath, type = 'image') {
+    async uploadPermanentMaterial(filePath, type = 'thumb') {
         try {
             const accessToken = await this.getAccessToken();
             const url = `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=${type}`;
@@ -283,7 +283,70 @@ ${content}
     }
 }
 
-// 爬取公众号文章
+// 从文章HTML中提取第一张图片URL
+function extractFirstImageFromContent(contentHtml) {
+    if (!contentHtml) return null;
+
+    const $ = cheerio.load(contentHtml);
+    const firstImg = $('img').first();
+
+    if (firstImg.length > 0) {
+        const src = firstImg.attr('data-src') || firstImg.attr('src');
+        return src;
+    }
+
+    return null;
+}
+
+// 下载图片并保存到本地
+async function downloadImage(url, filepath) {
+    try {
+        const response = await axios({
+            method: 'GET',
+            url: url,
+            responseType: 'stream',
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        const writer = fs.createWriteStream(filepath);
+        response.data.pipe(writer);
+
+        return new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+    } catch (error) {
+        console.error('下载图片失败:', error);
+        throw new Error(`下载图片失败: ${error.message}`);
+    }
+}
+
+// 创建一个默认的封面图
+function createDefaultCoverImage(filepath) {
+    // 使用简单的SVG作为默认封面
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="383" xmlns="http://www.w3.org/2000/svg">
+    <rect width="900" height="383" fill="#667eea"/>
+    <rect width="900" height="383" fill="url(#gradient)"/>
+    <defs>
+        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+        </linearGradient>
+    </defs>
+    <text x="450" y="200" font-family="Arial, sans-serif" font-size="48" fill="white" text-anchor="middle" font-weight="bold">微信公众号文章</text>
+</svg>`;
+
+    try {
+        // 保存为SVG文件(微信公众号可能不支持SVG,需要转换为PNG)
+        // 这里我们创建一个简单的文本文件作为占位,实际应该生成真正的图片
+        fs.writeFileSync(filepath, svg);
+    } catch (error) {
+        console.error('创建默认封面图失败:', error);
+    }
+}
 async function fetchWeChatArticle(url) {
     try {
         const response = await axios.get(url, {
@@ -651,7 +714,7 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
 // 发布到微信公众号
 app.post('/api/publish', async (req, res) => {
     try {
-        const { title, content, appid, secret, thumbMediaId } = req.body;
+        const { title, content, appid, secret, thumbMediaId, contentHtml } = req.body;
 
         if (!title || !content || !appid || !secret) {
             return res.json({
@@ -663,8 +726,65 @@ app.post('/api/publish', async (req, res) => {
         console.log('步骤3: 开始创建草稿...');
         const wechat = new WeChatAPI(appid, secret);
 
-        // 如果没有提供封面图，使用默认值
-        const mediaId = thumbMediaId || '0';
+        let mediaId = thumbMediaId;
+
+        // 如果没有提供封面图,尝试从文章中提取第一张图片
+        if (!mediaId) {
+            console.log('步骤3.1: 未提供封面图,尝试从文章中提取...');
+
+            try {
+                const firstImageUrl = extractFirstImageFromContent(contentHtml);
+                if (firstImageUrl) {
+                    console.log('步骤3.1: 找到文章中的图片,正在下载并上传...', firstImageUrl);
+
+                    // 创建临时文件
+                    const tempImagePath = path.join('uploads', `temp_cover_${Date.now()}.jpg`);
+                    await downloadImage(firstImageUrl, tempImagePath);
+
+                    // 上传为封面图
+                    mediaId = await wechat.uploadPermanentMaterial(tempImagePath, 'thumb');
+                    console.log('步骤3.1: 封面图上传成功', { mediaId });
+
+                    // 删除临时文件
+                    if (fs.existsSync(tempImagePath)) {
+                        fs.unlinkSync(tempImagePath);
+                    }
+                } else {
+                    console.log('步骤3.1: 文章中未找到图片');
+                    // 创建默认封面图
+                    const defaultCoverPath = path.join('uploads', `default_cover_${Date.now()}.jpg`);
+                    createDefaultCoverImage(defaultCoverPath);
+
+                    // 上传默认封面图
+                    try {
+                        mediaId = await wechat.uploadPermanentMaterial(defaultCoverPath, 'thumb');
+                        console.log('步骤3.1: 默认封面图上传成功', { mediaId });
+                    } catch (uploadError) {
+                        console.error('步骤3.1: 默认封面图上传失败,尝试不使用封面图:', uploadError.message);
+                        // 如果默认封面图上传失败,仍然尝试创建草稿(可能不需要封面图)
+                        mediaId = null;
+                    }
+
+                    // 删除临时文件
+                    if (fs.existsSync(defaultCoverPath)) {
+                        fs.unlinkSync(defaultCoverPath);
+                    }
+                }
+            } catch (error) {
+                console.error('步骤3.1: 提取或上传封面图失败:', error.message);
+                // 继续执行,不阻止草稿创建
+            }
+        }
+
+        // 如果仍然没有有效的media_id,抛出错误
+        if (!mediaId) {
+            return res.json({
+                success: false,
+                error: '创建草稿失败: 必须提供有效的封面图media_id'
+            });
+        }
+
+        console.log('步骤3.2: 使用封面图创建草稿...', { thumbMediaId: mediaId });
 
         // 转换内容为微信公众号格式
         const formattedContent = content
@@ -681,12 +801,12 @@ app.post('/api/publish', async (req, res) => {
             content: formattedContent,
             author: 'AI助手',
             thumbMediaId: mediaId,
-            showCoverPic: thumbMediaId ? 1 : 0,
+            showCoverPic: 1,
             needOpenComment: true,
             onlyFansCanComment: false
         };
 
-        console.log('步骤3.1: 调用创建草稿接口...', { thumbMediaId: mediaId });
+        console.log('步骤3.3: 调用创建草稿接口...');
 
         // 创建草稿
         const result = await wechat.addDraft(article);

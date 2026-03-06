@@ -324,7 +324,7 @@ async function publishToWechat() {
     let thumbMediaId = null;
 
     if (state.imageFile) {
-        updateProgress(70, '正在上传图片...');
+        updateProgress(70, '步骤3.1: 正在上传封面图...');
         thumbMediaId = await uploadImage();
     }
 
@@ -336,7 +336,8 @@ async function publishToWechat() {
             content: state.rewrittenArticle,
             appid: state.settings.wechatAppId,
             secret: state.settings.wechatSecret,
-            thumbMediaId: thumbMediaId
+            thumbMediaId: thumbMediaId,
+            contentHtml: state.originalArticle.contentHtml || ''
         })
     });
 
