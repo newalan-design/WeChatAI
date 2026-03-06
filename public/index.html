@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微信公众号文章改写助手</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+        }
+
+        /* 左侧设置栏 */
+        .sidebar {
+            width: 320px;
+            background: white;
+            border-right: 1px solid #e8e8e8;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.05);
+            z-index: 100;
+        }
+
+        .logo {
+            padding: 24px;
+            border-bottom: 1px solid #e8e8e8;
+        }
+
+        .logo h1 {
+            font-size: 1.4em;
+            color: #1890ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .user-info {
+            padding: 16px 24px;
+            background: #f0f7ff;
+            border-bottom: 1px solid #e8e8e8;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .user-role {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            color: #ff4d4f;
+            cursor: pointer;
+            padding: 8px;
+            transition: transform 0.3s;
+        }
+
+        .logout-btn:hover {
+            transform: rotate(90deg);
+        }
+
+        .nav-menu {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 24px;
+            gap: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #666;
+            font-size: 14px;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: #f9f9f9;
+            color: #1890ff;
+        }
+
+        .nav-item.active {
+            background: #e6f7ff;
+            color: #1890ff;
+            border-left-color: #1890ff;
+        }
+
+        .nav-item i {
+            font-size: 18px;
+        }
+
+        .nav-separator {
+            height: 1px;
+            background: #e8e8e8;
+            margin: 8px 0;
+        }
+
+        /* 右侧内容区 */
+        .main-content {
+            flex: 1;
+            margin-left: 320px;
+            padding: 30px;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-header {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .section-subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            color: #333;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+
+        .form-control {
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ff4d4f;
+            border: none;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ff7875;
+            color: white;
+        }
+
+        .progress {
+            height: 8px;
+            border-radius: 4px;
+            background: #f0f0f0;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        /* 用户管理表格 */
+        .table {
+            margin: 0;
+        }
+
+        .table thead th {
+            background: #f8f9fa;
+            font-weight: 600;
+            border-bottom: 2px solid #e8e8e8;
+        }
+
+        .table tbody tr:hover {
+            background: #f9f9f9;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-admin {
+            background: #e6f7ff;
+            color: #1890ff;
+        }
+
+        .badge-user {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-edit {
+            background: #e6f7ff;
+            color: #1890ff;
+        }
+
+        .btn-edit:hover {
+            background: #1890ff;
+            color: white;
+        }
+
+        .btn-delete {
+            background: #fff1f0;
+            color: #ff4d4f;
+        }
+
+        .btn-delete:hover {
+            background: #ff4d4f;
+            color: white;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: relative;
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 20px;
+            }
+
+            .nav-menu {
+                display: flex;
+                flex-wrap: wrap;
+                padding: 10px;
+            }
+
+            .nav-item {
+                flex: 1;
+                min-width: 120px;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 左侧导航栏 -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h1>
+                <i class="bi bi-robot"></i>
+                微信公众号改写助手
+            </h1>
+        </div>
+
+        <div class="user-info">
+            <div class="user-avatar" id="userAvatar">A</div>
+            <div class="user-details">
+                <div class="user-name" id="userName">加载中...</div>
+                <div class="user-role" id="userRole">加载中...</div>
+            </div>
+            <button class="logout-btn" onclick="logout()" title="退出登录">
+                <i class="bi bi-box-arrow-right"></i>
+            </button>
+        </div>
+
+        <nav class="nav-menu">
+            <div class="nav-item active" data-section="article" onclick="switchSection('article')">
+                <i class="bi bi-file-earmark-text"></i>
+                <span>文章URL改写</span>
+            </div>
+            <div class="nav-item" data-section="settings" onclick="switchSection('settings')">
+                <i class="bi bi-gear"></i>
+                <span>系统设置</span>
+            </div>
+            <div class="nav-separator"></div>
+            <div class="nav-item admin-only" data-section="users" onclick="switchSection('users')">
+                <i class="bi bi-people"></i>
+                <span>账号管理</span>
+            </div>
+        </nav>
+    </aside>
+
+    <!-- 右侧内容区 -->
+    <main class="main-content">
+        <!-- 文章改写页 -->
+        <section id="article-section" class="content-section active">
+            <div class="section-header">
+                <h2 class="section-title">文章URL改写</h2>
+                <p class="section-subtitle">输入公众号文章链接，自动爬取并改写内容</p>
+            </div>
+
+            <div class="card">
+                <div class="mb-3">
+                    <label class="form-label">公众号文章URL</label>
+                    <input type="text" class="form-control" id="articleUrl" placeholder="https://mp.weixin.qq.com/s/...">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">文章主图（可选）</label>
+                    <input type="file" class="form-control" id="articleImage" accept="image/*">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">进度</label>
+                    <div class="progress">
+                        <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted" id="progressText">准备开始...</small>
+                </div>
+
+                <button class="btn btn-primary" onclick="startProcessing()">
+                    <i class="bi bi-play-circle"></i> 开始处理
+                </button>
+            </div>
+
+            <div class="card" id="resultCard" style="display: none;">
+                <h4 class="mb-3">处理结果</h4>
+                <div id="resultContent"></div>
+            </div>
+        </section>
+
+        <!-- 系统设置页 -->
+        <section id="settings-section" class="content-section">
+            <div class="section-header">
+                <h2 class="section-title">系统设置</h2>
+                <p class="section-subtitle">配置微信公众号和大模型API</p>
+            </div>
+
+            <div class="card">
+                <h5 class="mb-3">微信公众号配置</h5>
+                <div class="mb-3">
+                    <label class="form-label">AppID</label>
+                    <input type="text" class="form-control" id="wechatAppId" placeholder="输入微信公众号AppID">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">AppSecret</label>
+                    <input type="password" class="form-control" id="wechatSecret" placeholder="输入微信公众号Secret">
+                </div>
+            </div>
+
+            <div class="card">
+                <h5 class="mb-3">大模型配置</h5>
+                <div class="mb-3">
+                    <label class="form-label">API Key</label>
+                    <input type="password" class="form-control" id="aiApiKey" placeholder="输入大模型API Key">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API URL</label>
+                    <input type="text" class="form-control" id="aiApiUrl" placeholder="https://api.openai.com/v1/chat/completions">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">模型名称</label>
+                    <input type="text" class="form-control" id="aiModel" placeholder="gpt-3.5-turbo">
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveSettings()">
+                <i class="bi bi-save"></i> 保存设置
+            </button>
+        </section>
+
+        <!-- 账号管理页（管理员） -->
+        <section id="users-section" class="content-section">
+            <div class="section-header">
+                <h2 class="section-title">账号管理</h2>
+                <p class="section-subtitle">管理系统用户和权限</p>
+            </div>
+
+            <div class="card">
+                <button class="btn btn-primary mb-3" onclick="showAddUserModal()">
+                    <i class="bi bi-plus-circle"></i> 新增用户
+                </button>
+
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>角色</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <!-- 动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 新增用户模态框 -->
+    <div class="modal fade" id="addUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">新增用户</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="newUsername" placeholder="输入用户名">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">密码</label>
+                        <input type="password" class="form-control" id="newPassword" placeholder="输入密码（至少6位）">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="newIsAdmin">
+                            <label class="form-check-label" for="newIsAdmin">
+                                管理员权限
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createUser()">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 修改密码模态框 -->
+    <div class="modal fade" id="changePasswordModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">修改密码</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editUserId">
+                    <div class="mb-3">
+                        <label class="form-label">旧密码</label>
+                        <input type="password" class="form-control" id="oldPassword" placeholder="输入旧密码">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">新密码</label>
+                        <input type="password" class="form-control" id="newUserPassword" placeholder="输入新密码（至少6位）">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="changePassword()">确认修改</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
