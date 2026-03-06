@@ -130,6 +130,33 @@ class WeChatAPI {
         }
     }
 
+    // 上传永久素材（图片/视频）
+    async uploadPermanentMaterial(filePath, type = 'image') {
+        try {
+            const accessToken = await this.getAccessToken();
+            const url = `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=${type}`;
+
+            // 创建FormData
+            const form = new FormData();
+            form.append('media', fs.createReadStream(filePath));
+
+            const response = await axios.post(url, form, {
+                headers: {
+                    ...form.getHeaders()
+                }
+            });
+            const data = response.data;
+
+            if (data.errcode) {
+                throw new Error(`上传永久素材失败: ${data.errmsg}`);
+            }
+
+            return data.media_id;
+        } catch (error) {
+            throw new Error(`上传永久素材失败: ${error.message}`);
+        }
+    }
+
     // 上传临时素材（图片）
     async uploadTempMedia(filePath, type = 'image') {
         try {
@@ -269,24 +296,30 @@ async function fetchWeChatArticle(url) {
         const $ = cheerio.load(html);
 
         // 提取文章标题
-        const title = $('#activity-name').text().trim() || 
-                     $('title').text().trim() || 
+        const title = $('#activity-name').text().trim() ||
+                     $('title').text().trim() ||
                      '未命名文章';
 
-        // 提取文章内容
-        const content = $('#js_content').text().trim() || 
-                       $('.rich_media_content').text().trim() || 
-                       '';
+        // 提取文章内容（保留HTML格式）
+        const contentHtml = $('#js_content').html() ||
+                           $('.rich_media_content').html() ||
+                           '';
 
-        if (!content) {
+        // 提取纯文本内容
+        const contentText = $('#js_content').text().trim() ||
+                           $('.rich_media_content').text().trim() ||
+                           '';
+
+        if (!contentText) {
             throw new Error('无法提取文章内容，请检查URL是否正确');
         }
 
         return {
             title: title,
-            content: content,
+            content: contentText,
+            contentHtml: contentHtml,
             url: url,
-            length: content.length
+            length: contentText.length
         };
     } catch (error) {
         throw new Error(`爬取文章失败: ${error.message}`);
@@ -510,14 +543,16 @@ app.post('/api/fetch', async (req, res) => {
             });
         }
 
+        console.log('步骤1: 开始爬取文章...', url);
         const article = await fetchWeChatArticle(url);
+        console.log('步骤1完成: 文章爬取成功', { title: article.title, length: article.length });
 
         res.json({
             success: true,
             article: article
         });
     } catch (error) {
-        console.error('爬取错误:', error);
+        console.error('步骤1失败: 爬取错误:', error);
         res.json({
             success: false,
             error: error.message
@@ -544,6 +579,7 @@ app.post('/api/rewrite', async (req, res) => {
             });
         }
 
+        console.log('步骤2: 开始改写文章...');
         const aiApi = new AIModelAPI(
             apiKey,
             apiUrl || process.env.AI_API_URL || 'https://api.openai.com/v1/chat/completions',
@@ -551,13 +587,14 @@ app.post('/api/rewrite', async (req, res) => {
         );
 
         const result = await aiApi.rewrite(content);
+        console.log('步骤2完成: 文章改写成功', { originalLength: content.length, resultLength: result.length });
 
         res.json({
             success: true,
             result: result
         });
     } catch (error) {
-        console.error('改写错误:', error);
+        console.error('步骤2失败: 改写错误:', error);
         res.json({
             success: false,
             error: error.message
@@ -584,8 +621,12 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
             });
         }
 
+        console.log('步骤3.1: 开始上传图片到微信公众号...');
         const wechat = new WeChatAPI(appid, secret);
-        const mediaId = await wechat.uploadTempMedia(req.file.path);
+
+        // 先上传为永久素材（用于封面图）
+        const mediaId = await wechat.uploadPermanentMaterial(req.file.path, 'thumb');
+        console.log('步骤3.1完成: 图片上传成功', { mediaId });
 
         // 删除临时文件
         fs.unlinkSync(req.file.path);
@@ -595,7 +636,7 @@ app.post('/api/upload-image', upload.single('image'), async (req, res) => {
             media_id: mediaId
         });
     } catch (error) {
-        console.error('图片上传错误:', error);
+        console.error('步骤3.1失败: 图片上传错误:', error);
         // 删除临时文件
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
@@ -619,7 +660,11 @@ app.post('/api/publish', async (req, res) => {
             });
         }
 
+        console.log('步骤3: 开始创建草稿...');
         const wechat = new WeChatAPI(appid, secret);
+
+        // 如果没有提供封面图，使用默认值
+        const mediaId = thumbMediaId || '0';
 
         // 转换内容为微信公众号格式
         const formattedContent = content
@@ -635,14 +680,18 @@ app.post('/api/publish', async (req, res) => {
             title: title,
             content: formattedContent,
             author: 'AI助手',
-            thumbMediaId: thumbMediaId || '0',
+            thumbMediaId: mediaId,
             showCoverPic: thumbMediaId ? 1 : 0,
             needOpenComment: true,
             onlyFansCanComment: false
         };
 
+        console.log('步骤3.1: 调用创建草稿接口...', { thumbMediaId: mediaId });
+
         // 创建草稿
         const result = await wechat.addDraft(article);
+
+        console.log('步骤3完成: 草稿创建成功', result);
 
         res.json({
             success: true,
@@ -650,7 +699,7 @@ app.post('/api/publish', async (req, res) => {
             data: result
         });
     } catch (error) {
-        console.error('发布错误:', error);
+        console.error('步骤3失败: 发布错误:', error);
         res.json({
             success: false,
             error: error.message

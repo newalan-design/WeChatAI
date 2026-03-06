@@ -179,27 +179,85 @@ async function startProcessing() {
         return;
     }
 
+    // 清空结果显示
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('step1Content').innerHTML = '';
+    document.getElementById('step2Content').innerHTML = '';
+    document.getElementById('step3Content').innerHTML = '';
+
     try {
-        updateProgress(20, '正在爬取文章...');
+        // 步骤1: 爬取文章
+        updateProgress(20, '步骤1: 正在爬取文章...');
         const articleData = await fetchArticle(url);
         state.originalArticle = articleData;
 
-        updateProgress(50, '正在改写文章...');
+        // 显示步骤1结果
+        document.getElementById('step1Content').innerHTML = `
+            <div class="step-result">
+                <h6>✓ 文章爬取成功</h6>
+                <div class="mt-2">
+                    <strong>标题：</strong>${articleData.title}<br>
+                    <strong>字数：</strong>${articleData.content.length}<br>
+                    <strong>链接：</strong><a href="${articleData.url}" target="_blank">${articleData.url}</a>
+                </div>
+                <div class="mt-3">
+                    <strong>原始内容预览：</strong>
+                    <div class="border p-3 bg-light mt-2" style="max-height: 300px; overflow-y: auto;">
+                        <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px;">${articleData.content.substring(0, 800)}...</pre>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // 步骤2: 改写文章
+        updateProgress(50, '步骤2: 正在改写文章...');
         const rewritten = await rewriteArticle(articleData.content);
         state.rewrittenArticle = rewritten;
 
-        updateProgress(80, '正在创建草稿...');
-        await publishToWechat();
+        // 显示步骤2结果
+        document.getElementById('step2Content').innerHTML = `
+            <div class="step-result">
+                <h6>✓ 文章改写成功</h6>
+                <div class="mt-2">
+                    <strong>原标题：</strong>${articleData.title}<br>
+                    <strong>字数变化：</strong>${articleData.content.length} → ${rewritten.length}
+                </div>
+                <div class="mt-3">
+                    <strong>改写后内容预览：</strong>
+                    <div class="border p-3 bg-light mt-2" style="max-height: 300px; overflow-y: auto;">
+                        <pre style="white-space: pre-wrap; word-wrap: break-word; font-size: 12px;">${rewritten.substring(0, 800)}...</pre>
+                    </div>
+                </div>
+            </div>
+        `;
 
-        updateProgress(100, '处理完成！');
+        // 步骤3: 创建草稿
+        updateProgress(80, '步骤3: 正在创建草稿...');
+        const publishResult = await publishToWechat();
 
+        // 显示步骤3结果
+        document.getElementById('step3Content').innerHTML = `
+            <div class="step-result">
+                <h6>✓ 草稿创建成功</h6>
+                <div class="mt-2">
+                    <strong>media_id：</strong>${publishResult.data.media_id || 'N/A'}<br>
+                    <strong>创建时间：</strong>${new Date().toLocaleString('zh-CN')}
+                </div>
+            </div>
+        `;
+
+        updateProgress(100, '✓ 处理完成！');
+
+        // 显示总体结果
         document.getElementById('resultCard').style.display = 'block';
         document.getElementById('resultContent').innerHTML = `
-            <h5>原标题：${articleData.title}</h5>
-            <p class="text-muted mb-3">字数：${articleData.content.length} → ${rewritten.length}</p>
-            <h6>改写结果预览：</h6>
-            <div class="border p-3 bg-light" style="max-height: 300px; overflow-y: auto;">
-                <pre style="white-space: pre-wrap; word-wrap: break-word;">${rewritten.substring(0, 500)}...</pre>
+            <h5>🎉 全部完成</h5>
+            <p class="text-muted mb-3">文章已成功发布到微信公众号草稿箱</p>
+            <div class="alert alert-success">
+                <strong>处理流程：</strong><br>
+                1. ✅ 爬取原始文章<br>
+                2. ✅ AI智能改写<br>
+                3. ✅ 创建微信草稿
             </div>
         `;
 
@@ -208,7 +266,17 @@ async function startProcessing() {
     } catch (error) {
         console.error('处理失败:', error);
         showMessage(`处理失败：${error.message}`, 'error');
-        updateProgress(0, '处理失败');
+        updateProgress(0, '❌ 处理失败');
+
+        // 显示错误信息
+        document.getElementById('resultCard').style.display = 'block';
+        document.getElementById('resultContent').innerHTML = `
+            <div class="alert alert-danger">
+                <h5>❌ 处理失败</h5>
+                <p>${error.message}</p>
+                <p class="mb-0 text-muted">请检查配置和网络连接后重试</p>
+            </div>
+        `;
     }
 }
 
